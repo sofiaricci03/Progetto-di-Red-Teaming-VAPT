@@ -7,7 +7,8 @@ Al suo interno si troveranno:
 - Comandi.txt ovvero un foglio di testo il quale raccoglie i comandi utilizzati per la fase di Information Gathering;
 - RelazioneVapt.pdf ovvero la frelazione, in formato pdf, che racchiude la spiegazione delle operazioni svolte.
 
-  Siti consultati
+
+# Siti consultati
 - https://docs.docker.com/desktop/setup/install/windows-install/
 - https://hub.docker.com/r/bkimminich/juice-shop
 - https://owasp.org/www-project-juice-shop/
