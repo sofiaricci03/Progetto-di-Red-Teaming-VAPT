@@ -1,0 +1,78 @@
+# Ottenere l'indirizzo IP del container docker juice-shop
+docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' juice-shop
+
+# Creare le cartelle per raccogliere le evidenze dai vari strumenti
+mkdir -p ~/juice_shop_vapt/evidence/{nmap,whatweb,nikto,gobuster}
+
+# Scansione di base con nmap per identificare servizi sulla porta 3000
+nmap -p 3000 -sV 172.17.0.2 -oN evidence/nmap/nmap_scan_basic.txt
+
+# Scansione aggressiva con nmap per informazioni dettagliate del servizio
+sudo nmap -A 172.17.0.2 -p 3000 -oN evidence/nmap/nmap_scan_aggressive.txt
+
+# Analisi tecnologia web con whatweb (fallita su IP)
+whatweb http://172.17.0.2:3000 -v > evidence/whatweb/whatweb_output.txt
+
+# Scansione vulnerabilità con nikto (fallita su IP)
+nikto -h http://172.17.0.2:3000 -output evidence/nikto/nikto_output.txt
+
+# Controllo header HTTP del server locale con curl
+curl -I http://localhost:3000 2>&1 | tee ~/juice_shop_vapt/evidence/ig_curl_localhost.txt
+
+# Analisi tecnologia web con whatweb sul localhost
+whatweb http://localhost:3000 -v | tee ~/juice_shop_vapt/evidence/whatweb/whatweb_output.txt
+
+# Scansione vulnerabilità con nikto sul localhost
+nikto -h http://localhost:3000 -output ~/juice_shop_vapt/evidence/nikto/nikto_output.txt
+
+# Creazione wordlist personalizzata per gobuster
+cat > ~/juice_shop_vapt/wordlists/mini_dirs.txt <<'EOF'
+admin
+ftp
+rest
+api
+score-board
+assets
+uploads
+robots.txt
+sitemap.xml
+login
+logout
+users
+orders
+basket
+static
+images
+public
+docs
+health
+EOF
+
+# Enumerazione manuale di directory con curl e wordlist (HEAD requests per codice e redirect)
+TARGET="http://localhost:3000"
+IN=~/juice_shop_vapt/wordlists/mini_dirs.txt
+OUT=~/juice_shop_vapt/evidence/gobuster/gobuster_output_manual.txt
+
+> "$OUT"
+while IFS= read -r path; do
+  url="${TARGET%/}/$path"
+  resp=$(curl -s -I --max-time 8 "$url")
+  code=$(echo "$resp" | awk '/^HTTP/{print $2; exit}')
+  location=$(echo "$resp" | awk -F': ' '/^Location:/ {print $2; exit}')
+  printf "%s %s %s\n" "$code" "$url" "${location:--}" >> "$OUT"
+done < "$IN"
+
+# Salvataggio contenuto di directory con codice 200 in file di testo
+OUT_DIR=~/juice_shop_vapt/evidence/gobuster_content
+mkdir -p "$OUT_DIR"
+
+while IFS= read -r path; do
+  url="${TARGET%/}/$path"
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "$url")
+  if [ "$code" = "200" ]; then
+    echo "200 $url" >> ~/juice_shop_vapt/evidence/gobuster/gobuster_output_manual.txt
+    curl -s --max-time 8 "$url" | head -n 200 > "$OUT_DIR/$(echo $path | sed 's/[^a-zA-Z0-9_.-]/_/g').txt"
+  else
+    echo "$code $url" >> ~/juice_shop_vapt/evidence/gobuster/gobuster_output_manual.txt
+  fi
+done < ~/juice_shop_vapt/wordlists/mini_dirs.txt
